@@ -1,0 +1,4 @@
+# Install as /etc/cron.d/jeems
+# Daily at 08:00: email reminders for Event Status Reports past their 5-day window.
+# <<< CHANGE: the paths if your project is not in /srv/jeems.
+0 8 * * * jeems cd /srv/jeems/backend && venv/bin/python manage.py send_overdue_report_reminders >> /var/log/jeems-reminders.log 2>&1

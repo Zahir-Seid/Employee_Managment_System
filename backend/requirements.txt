@@ -1,0 +1,14 @@
+Django==5.2.18
+djangorestframework==3.17.2
+djangorestframework-simplejwt==5.5.1
+django-filter==24.3
+drf-spectacular==0.28.0
+django-cors-headers==4.6.0
+psycopg2-binary==2.9.10
+Pillow==11.0.0
+python-decouple==3.8
+reportlab==4.2.5
+openpyxl==3.1.5
+python-docx==1.1.2
+gunicorn==23.0.0
+whitenoise==6.8.2

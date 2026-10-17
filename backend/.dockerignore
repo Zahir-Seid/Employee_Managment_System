@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env
+venv/
+media/
+test_media/
+staticfiles/
+db.sqlite3
+sqlite_dump.json
+.ruff_cache/
+private_media/
+*.log
+*.pem
+*.key

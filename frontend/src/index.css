@@ -1,0 +1,268 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Theme tokens as space-separated RGB channels (consumed by tailwind.config.js
+     via rgb(var(--x) / <alpha-value>)). Light values are the original palette,
+     unchanged. `.dark` is toggled on <html> by src/context/ThemeContext.jsx and
+     is never applied on the live TV Display kiosk (/tv-display). */
+  :root {
+    --pagebg: 247 249 252;
+    --surface: 255 255 255;
+    --surface-muted: 241 244 249;
+    --surface-sunken: 238 241 245;
+    --sidebar-bg: 255 255 255;
+    --sidebar-border: 229 233 240;
+    --line: 229 233 240;
+    --ink: 17 24 39;
+    --ink-muted: 107 114 128;
+    --ink-faint: 156 163 175;
+    --ems-primary: 37 99 196;
+    --ems-primary-hover: 29 78 158;
+    --primary-light: 232 240 252;
+    --primary-light-text: 29 78 158;
+    --pill-success-light: 225 245 238;
+    --pill-warning-light: 253 241 227;
+    --pill-neutral-bg: 238 241 245;
+    --pill-neutral-text: 43 58 85;
+    --pill-purple-light: 240 235 252;
+    --pill-teal-light: 225 246 248;
+    --navy-50: 238 241 245;
+    --navy-100: 220 226 234;
+    --navy-300: 150 168 188;
+    --navy-500: 74 88 114;
+    --navy-600: 55 69 94;
+    --navy-700: 43 58 85;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --pagebg: 11 16 26;
+    --surface: 21 28 41;
+    --surface-muted: 30 39 55;
+    --surface-sunken: 26 34 48;
+    --sidebar-bg: 17 23 34;
+    --sidebar-border: 39 49 68;
+    --line: 42 52 72;
+    --ink: 236 240 246;
+    --ink-muted: 160 171 189;
+    --ink-faint: 118 130 150;
+    --ems-primary: 76 134 230;
+    --ems-primary-hover: 106 155 236;
+    --primary-light: 30 48 82;
+    --primary-light-text: 158 195 250;
+    --pill-success-light: 18 56 46;
+    --pill-warning-light: 62 44 22;
+    --pill-neutral-bg: 36 46 64;
+    --pill-neutral-text: 203 213 228;
+    --pill-purple-light: 44 36 76;
+    --pill-teal-light: 16 55 60;
+    --navy-50: 33 43 60;
+    --navy-100: 44 56 76;
+    --navy-300: 96 112 138;
+    --navy-500: 150 165 190;
+    --navy-600: 176 189 210;
+    --navy-700: 203 213 228;
+  }
+
+  html {
+    font-family: "Roboto", sans-serif;
+  }
+
+  body {
+    @apply bg-pagebg text-ink antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: "Roboto", sans-serif;
+    @apply text-ink font-bold tracking-tight;
+  }
+
+  /* Heavier near-black heading weight app-wide, except the live TV Display
+     kiosk (html[data-tv]) which keeps its original weight. */
+  html:not([data-tv]) :is(h1, h2, h3, h4) {
+    @apply font-extrabold;
+  }
+
+  /* Visible keyboard focus everywhere, per accessibility floor. */
+  :focus-visible {
+    outline: 2px solid theme("colors.ems.primary");
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface rounded-card border border-line shadow-card p-5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md font-medium text-sm px-4 py-[7px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    /* Item #4: every disabled state on this button across the app is a
+       loading state (isSubmitting/isSaving/isDownloading), never a
+       validation block — so `cursor-not-allowed` (looks like an error) was
+       always the wrong signal. `cursor-wait` reads as "in progress"
+       instead. */
+    @apply btn bg-ems-primary text-white hover:bg-ems-primaryHover disabled:!cursor-wait;
+  }
+
+  .btn-secondary {
+    @apply btn bg-surface text-ink border border-line hover:bg-surface-muted;
+  }
+
+  .btn-danger {
+    @apply btn bg-ems-primary text-white hover:bg-ems-primaryHover;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-ink mb-1;
+  }
+
+  .form-input {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-[7px] text-sm text-ink placeholder-ink-faint focus:border-ems-primary/50 focus:ring-1 focus:ring-ems-primary/30 outline-none transition-colors;
+  }
+
+  /* RPDMS-style list table: tinted header row with sentence-case bold
+     labels, roomier rows. Applied via className="jm-table" on <table>. */
+  .jm-table thead th {
+    background-color: rgb(var(--primary-light) / 0.6);
+    color: rgb(var(--ink));
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .jm-table tbody td {
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+  }
+
+  /* Inputs on the Login / Register pages: soft tinted field, rounder corners. */
+  .jm-auth-input {
+    @apply w-full rounded-lg border border-line bg-surface-muted px-3.5 py-2.5 text-sm text-ink shadow-sm placeholder-ink-faint focus:border-ems-primary/50 focus:ring-1 focus:ring-ems-primary/30 outline-none transition-colors;
+  }
+
+  .form-error {
+    @apply text-xs text-warning mt-1;
+  }
+
+  /* Category rail: the signature visual device tying every event card,
+     table row, and calendar entry to its category via a left border strip
+     plus dot — the same taxonomy (Intl/National/Regional/Internal) is
+     central to the whole product, so encoding it visually everywhere
+     reinforces the mental model rather than decorating for its own sake. */
+  /* --- New EMS visual-redesign classes (design spec §1, §5) --- */
+
+  /* Card per spec §1: 16px radius, shadow instead of border, generous
+     padding. Same visual recipe as .card above but scoped under its own
+     name so redesigned pages opt in explicitly while unmigrated pages
+     keep using .card unaffected. */
+  .jm-card {
+    @apply bg-surface rounded-card border border-line shadow-card p-5;
+  }
+
+  .jm-btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md bg-ems-primary text-white text-sm font-medium px-3.5 py-[7px] hover:bg-ems-primaryHover transition-colors;
+  }
+
+  .jm-btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md bg-surface border border-line text-ink text-sm font-medium px-3.5 py-[7px] hover:bg-pagebg transition-colors;
+  }
+
+  /* Shared "Back" pill, used by every Back control in the app. */
+  .jm-back-btn {
+    @apply inline-flex items-center justify-center gap-2.5 rounded-full border border-line bg-surface text-ink text-[15px] font-medium px-4 py-2 shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .jm-eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-wider text-ink-faint;
+  }
+
+  /* Pill — variant applied via a single class per §1/§5, mapped onto the
+     theme prompt's exact "Priority/Status badges" spec:
+       Urgent: bg #E8F0FC, text #1D4E9E
+       In Progress / Neutral: bg #EEF1F5, text #2B3A55
+       Completed: bg #E1F5EE, text #1D9E75
+     Statuses beyond those three named ones (High/Medium/Full/Partial/
+     None/Planned/Draft/Ongoing) are mapped onto the closest matching
+     category rather than each getting a bespoke color, so red stays rare
+     as the theme prompt asks ("minimize its use") instead of creeping
+     back in as a general "danger" tint for anything non-urgent. */
+  /* One shared status/badge look: small, bold, UPPERCASE, squared-off pill. */
+  .jm-status-pill {
+    @apply inline-flex items-center whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-bold uppercase leading-tight tracking-wide;
+  }
+  .jm-pill {
+    @apply jm-status-pill;
+  }
+  .jm-pill-danger, .jm-pill-overdue, .jm-pill-high { @apply bg-ems-primaryLight text-ems-primaryLightText; }
+  .jm-pill-medium, .jm-pill-partial, .jm-pill-warning { @apply bg-pill-warningLight text-pill-warning; }
+  .jm-pill-full, .jm-pill-completed, .jm-pill-success { @apply bg-pill-successLight text-pill-successText; }
+  .jm-pill-planned, .jm-pill-info, .jm-pill-none, .jm-pill-draft, .jm-pill-neutral, .jm-pill-ongoing {
+    @apply bg-pill-neutralBg text-pill-neutralText;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Typography: headings.                                               */
+/* Most headings carry an explicit font-bold/font-semibold utility,    */
+/* which beats the base h1-h4 rule above, so they are lifted to the    */
+/* heavy near-black weight here. The live TV Display kiosk               */
+/* (html[data-tv]) is excluded so it keeps its exact original look.    */
+/* ------------------------------------------------------------------ */
+html:not([data-tv]) :is(h1, h2, h3, h4):is([class~="font-bold"], [class~="font-semibold"]) {
+  font-weight: 800;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dark mode.                                                          */
+/* Token-based classes (bg-surface, text-ink, border-line, ...) flip   */
+/* through the variables above. The rules below cover the few          */
+/* hardcoded literals still in the codebase, plus chart colors.        */
+/* ------------------------------------------------------------------ */
+.dark .jm-card, .dark .card { border: 1px solid rgb(var(--line)); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+
+.dark .bg-white, .dark .hover\:bg-white:hover { background-color: rgb(var(--surface)); }
+.dark .bg-\[\#F1F4F9\], .dark .hover\:bg-\[\#F1F4F9\]:hover { background-color: rgb(var(--surface-muted)); }
+.dark .bg-\[\#F7F9FC\] { background-color: rgb(var(--pagebg)); }
+.dark .bg-\[\#DDE2EA\] { background-color: rgb(var(--surface-sunken)); }
+.dark .bg-\[\#E8F0FC\] { background-color: rgb(var(--primary-light)); }
+.dark .bg-\[\#E1F5EE\] { background-color: rgb(var(--pill-success-light)); }
+.dark .bg-\[\#FDF1E3\], .dark .bg-\[\#FDF6DD\] { background-color: rgb(var(--pill-warning-light)); }
+.dark .border-\[\#E5E9F0\] { border-color: rgb(var(--line)); }
+.dark .divide-\[\#E5E9F0\] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(var(--line)); }
+.dark .text-\[\#4B5563\] { color: rgb(var(--ink-muted)); }
+.dark .text-\[\#1D4E9E\] { color: rgb(var(--primary-light-text)); }
+.dark .text-\[\#2563C4\] { color: rgb(var(--ems-primary)); }
+.dark .text-\[\#8A6A00\], .dark .text-\[\#B8860B\] { color: #F3D27A; }
+.dark .text-\[\#C56D12\] { color: #F2A65A; }
+
+/* Inline navy heading color used on Dashboard/Reports section titles. */
+.dark [style*="#0F1F3D"], .dark [style*="#0f1f3d"], .dark [style*="rgb(15, 31, 61)"] {
+  color: rgb(var(--ink)) !important;
+  border-color: rgb(var(--line)) !important;
+}
+
+/* Recharts: gridlines, axis text, bar labels, tooltip, pie separators. */
+.dark .recharts-cartesian-grid line { stroke: rgb(var(--line)); }
+.dark .recharts-cartesian-axis-tick-value { fill: rgb(var(--ink-muted)) !important; }
+.dark .recharts-label-list text { fill: rgb(var(--ink)) !important; }
+.dark .recharts-default-tooltip {
+  background-color: rgb(var(--surface)) !important;
+  border-color: rgb(var(--line)) !important;
+  color: rgb(var(--ink));
+}
+.dark .recharts-sector { stroke: rgb(var(--surface)); }

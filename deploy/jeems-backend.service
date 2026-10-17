@@ -1,0 +1,17 @@
+# Install as /etc/systemd/system/jeems-backend.service
+# <<< CHANGE: User/Group and the paths if your project is not in /srv/jeems.
+[Unit]
+Description=EMS backend (gunicorn)
+After=network.target postgresql.service
+
+[Service]
+User=jeems
+Group=jeems
+WorkingDirectory=/srv/jeems/backend
+ExecStart=/srv/jeems/backend/venv/bin/gunicorn config.wsgi:application \
+    --bind 127.0.0.1:8000 --workers 3 --timeout 120 --access-logfile -
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

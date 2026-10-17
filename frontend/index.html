@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EMS | Event Management System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@300;400;500;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Apply the saved (or OS-preferred) theme before first paint so there is
+      // no light-to-dark flash. The live TV Display kiosk (/tv-display) is
+      // always light. Keep this logic in sync with src/context/ThemeContext.jsx.
+      (function () {
+        try {
+          var path = window.location.pathname;
+          var isTv = path === "/tv-display" || path.indexOf("/tv-display/") === 0;
+          var stored = window.localStorage.getItem("ems.theme");
+          var dark = stored
+            ? stored === "dark"
+            : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (isTv) document.documentElement.setAttribute("data-tv", "");
+          else if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
