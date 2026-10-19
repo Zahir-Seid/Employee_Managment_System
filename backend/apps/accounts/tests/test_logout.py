@@ -1,28 +1,17 @@
 """Security review finding #6: signing out now revokes the presented
 refresh token server-side instead of just "the client forgets it".
 """
-from django.conf import settings
 from django.core.cache import cache
-from django.test import override_settings
 from rest_framework.test import APIClient, APITestCase
 
 from apps.accounts.models import User
 from apps.audit.models import ActionType, AuditLog
+from apps.core.tests.throttle_helpers import patch_throttle_rates
 
 
-THROTTLES_OFF = {
-    **settings.REST_FRAMEWORK,
-    "DEFAULT_THROTTLE_CLASSES": [],
-    "DEFAULT_THROTTLE_RATES": {
-        **settings.REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {}),
-        "auth": "1000000/minute",
-    },
-}
-
-
-@override_settings(REST_FRAMEWORK=THROTTLES_OFF)
 class LogoutRevokesRefreshTokenTests(APITestCase):
     def setUp(self):
+        self.enterContext(patch_throttle_rates(auth="1000000/minute"))
         cache.clear()
         self.client = APIClient()
         self.user = User.objects.create_user(

@@ -29,6 +29,7 @@ from .serializers import (
     StaffSerializer,
     UserSerializer,
 )
+from .throttling import AttemptedUsernameThrottle
 
 
 class LoginView(TokenObtainPairView):
@@ -42,8 +43,13 @@ class LoginView(TokenObtainPairView):
     """
 
     serializer_class = EMSTokenObtainPairSerializer
-    throttle_classes = [ScopedRateThrottle]
+    # Two independent buckets: "auth" limits one IP (shared office NAT),
+    # login_user limits attempts against one *email* no matter where
+    # they come from (finding #9 — credential stuffing / password
+    # spraying one account). See apps/accounts/throttling.py.
+    throttle_classes = [ScopedRateThrottle, AttemptedUsernameThrottle]
     throttle_scope = "auth"
+    username_field = EMSTokenObtainPairSerializer.username_field
 
     def post(self, request, *args, **kwargs):
         # Reimplements TokenObtainPairView.post() instead of wrapping it so the

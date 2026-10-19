@@ -8,7 +8,6 @@ which token_blacklist must now reject.
 """
 from unittest import mock
 
-from django.conf import settings
 from django.test import override_settings
 from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -16,6 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.accounts import registration
 from apps.accounts.models import RegistrationOTP, Role, User
 from apps.core.tests.factories import make_user
+from apps.core.tests.throttle_helpers import patch_throttle_rates
 
 # These tests exercise token revocation, not rate limiting — and the
 # throttle counters live in the process-wide default cache keyed identically
@@ -23,17 +23,9 @@ from apps.core.tests.factories import make_user
 # (e.g. the password-reset OTP flow tests) can leave the hourly otp/auth
 # buckets exhausted when these tests run. Raise the scoped rates and clear
 # the cache at each setUp: token blacklisting, not throttling, is under
-# test here.
-BIG_RATES = {
-    **settings.REST_FRAMEWORK,
-    "DEFAULT_THROTTLE_CLASSES": [],
-    "DEFAULT_THROTTLE_RATES": {
-        **settings.REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {}),
-        "auth": "1000000/minute",
-        "otp_request": "1000000/hour",
-        "otp_verify": "1000000/hour",
-    },
-}
+# test here. (DRF snapshots DEFAULT_THROTTLE_RATES as a class attribute at
+# import time, so override_settings does NOT reach the throttles - see
+# apps/core/tests/throttle_helpers.py.)
 
 
 def _fresh_throttle_state():
@@ -49,12 +41,13 @@ def _assert_old_refresh_rejected(client, refresh_token):
     return res.status_code
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", REST_FRAMEWORK=BIG_RATES)
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class ChangePasswordRevokesRefreshTokensTests(APITestCase):
     NEW_PASSWORD = "New-Passw0rd!9"
     OLD_PASSWORD = "Old-Passw0rd!"
 
     def setUp(self):
+        self.enterContext(patch_throttle_rates(auth="1000000/minute", otp_request="1000000/hour", otp_verify="1000000/hour"))
         _fresh_throttle_state()
         self.client = APIClient()
         self.user = User.objects.create_user(
@@ -89,11 +82,12 @@ class ChangePasswordRevokesRefreshTokensTests(APITestCase):
         self.assertEqual(self.client.post("/api/auth/refresh/", {"refresh": res.data["refresh"]}, format="json").status_code, 200)
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", REST_FRAMEWORK=BIG_RATES)
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class AdminSetPasswordRevokesRefreshTokensTests(APITestCase):
     NEW_PASSWORD = "Reset-Passw0rd!7"
 
     def setUp(self):
+        self.enterContext(patch_throttle_rates(auth="1000000/minute", otp_request="1000000/hour", otp_verify="1000000/hour"))
         _fresh_throttle_state()
         self.client = APIClient()
         self.target = make_user(email="target@ee.org")
@@ -113,11 +107,12 @@ class AdminSetPasswordRevokesRefreshTokensTests(APITestCase):
         self.assertTrue(self.target.refresh_from_db() or self.target.check_password(self.NEW_PASSWORD))
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", REST_FRAMEWORK=BIG_RATES)
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class OtpPasswordResetRevokesRefreshTokensTests(APITestCase):
     NEW_PASSWORD = "New-Passw0rd!11"
 
     def setUp(self):
+        self.enterContext(patch_throttle_rates(auth="1000000/minute", otp_request="1000000/hour", otp_verify="1000000/hour"))
         _fresh_throttle_state()
         self.client = APIClient()
         self.user = User.objects.create_user(

@@ -193,6 +193,11 @@ REST_FRAMEWORK = {
         # office IPs and an always-on TV screen refreshing its token would
         # otherwise exceed the global "anon" rate.
         "auth": "60/min",
+        # Finding #9: independent per-*attempted-email* login rate — an
+        # attacker guessing passwords for one account hits this bucket no
+        # matter which IP the guesses come from (see
+        # apps/accounts/throttling.py AttemptedUsernameThrottle).
+        "login_user": "10/min",
         # Registration OTP limits are per-IP; request-otp is stricter since it
         # sends an email.
         "otp_request": "5/hour",

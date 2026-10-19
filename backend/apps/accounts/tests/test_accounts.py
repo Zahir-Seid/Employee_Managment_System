@@ -9,6 +9,9 @@ class LoginTests(APITestCase):
     """FR1/FR2: secure login with role embedded for frontend routing."""
 
     def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()  # keep the shared throttle buckets from leaking between tests
         self.user = make_staff(email="jane@ee.org")
 
     def test_login_with_correct_credentials_returns_tokens_and_role(self):
@@ -46,14 +49,23 @@ class LoginTests(APITestCase):
         password. LoginView now uses its own "auth" scope (60/min,
         settings.py), so 21 rapid attempts must all still be evaluated on
         their credentials, never short-circuited by the throttle.
+
+        Finding #9 added a second, per-attempted-mailbox bucket
+        ("login_user", 10/min): legitimate logins for DIFFERENT staff
+        members from one office IP must not trip it, so this test rotates
+        three mailboxes. Hammering exactly ONE mailbox is covered by
+        AttemptedUsernameThrottleTests — that is the desired new behavior.
         """
         from django.core.cache import cache
 
         cache.clear()
-        for _ in range(21):
+        staff_emails = [f"rapid{i}@ee.org" for i in range(3)]
+        for email in staff_emails:
+            make_staff(email=email)
+        for i in range(21):
             response = self.client.post(
                 reverse("accounts:login"),
-                {"email": "jane@ee.org", "password": "TestPass123!"},
+                {"email": staff_emails[i % 3], "password": "TestPass123!"},
             )
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
