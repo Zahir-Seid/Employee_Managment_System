@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from apps.audit.models import ActionType, ObjectType
 from apps.audit.utils import log_action
+from apps.communications.attachments import clean_filename
 from apps.events.models import Event
 
 from .services.docx_generator import (
@@ -28,6 +29,19 @@ from .services.report_data import get_report_queryset, get_report_summary_stats,
 
 VALID_PERIODS = {"weekly", "monthly", "quarterly", "yearly"}
 VALID_FORMATS = {"pdf", "excel", "docx"}  # Item #5: added Word export
+
+
+def _safe_report_filename(title, ext):
+    """Download name for a generated single-event export.
+
+    Event titles are free text a user controls. A title carrying \\r\\n
+    (or other control characters) used to end up verbatim inside the
+    Content-Disposition header — Django responds with a BadHeaderError
+    500, and a crafted title can smuggle extra header lines into the
+    download. Strip them the same way the support-message attachments
+    pipeline does (finding: header injection via export filename).
+    """
+    return clean_filename(f"{title.replace(' ', '_')}.{ext}")
 VALID_SCOPES = {"generic", "thematic_area", "single_event"}
 
 
@@ -245,15 +259,15 @@ class ReportGenerateView(APIView):
 
         if file_format == "pdf":
             buffer = generate_single_event_pdf(event, request.user)
-            filename = f"{event.title.replace(' ', '_')}.pdf"
+            filename = _safe_report_filename(event.title, "pdf")
             content_type = "application/pdf"
         elif file_format == "docx":
             buffer = generate_single_event_docx(event, request.user)
-            filename = f"{event.title.replace(' ', '_')}.docx"
+            filename = _safe_report_filename(event.title, "docx")
             content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         else:
             buffer = generate_single_event_excel(event, request.user)
-            filename = f"{event.title.replace(' ', '_')}.xlsx"
+            filename = _safe_report_filename(event.title, "xlsx")
             content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
         return FileResponse(buffer, as_attachment=True, filename=filename, content_type=content_type)
@@ -270,5 +284,5 @@ class EventPdfView(APIView):
     def get(self, request, event_id):
         event = _get_visible_event(request, event_id, own_only=False)
         buffer = generate_single_event_pdf(event, request.user)
-        filename = f"{event.title.replace(' ', '_')}.pdf"
+        filename = _safe_report_filename(event.title, "pdf")
         return FileResponse(buffer, as_attachment=True, filename=filename, content_type="application/pdf")

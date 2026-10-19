@@ -271,3 +271,51 @@ class PhotoUploadValidationTests(APITestCase):
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         sixth = self._upload()
         self.assertEqual(sixth.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class FilenameSanitationTests(APITestCase):
+    """Finding: exported download names were built verbatim from the
+    free-text event title. A title containing \\r\\n carried straight
+    into the Content-Disposition header — Django answers BadHeaderError
+    500, and a crafted title is one step from injecting header lines
+    into the download stream. Every generated filename must be
+    header-safe no matter what the event is called."""
+
+    def setUp(self):
+        self.staff = make_staff()
+        self.client.force_authenticate(user=self.staff)
+        self.event = make_past_event(self.staff, title="Trickle\r\nInjected: 1\rX-Seed: 2")
+
+    def _safe_download(self, url, params=None):
+        response = self.client.get(url, params)
+        self.assertEqual(response.status_code, 200, getattr(response, "data", ""))
+        disposition = response.headers["Content-Disposition"]
+        self.assertNotIn("\r", disposition)
+        self.assertNotIn("\n", disposition)
+        return disposition
+
+    def test_single_event_pdf_is_header_safe(self):
+        head = self._safe_download(
+            reverse("reports:report-generate"),
+            {"scope": "single_event", "event_id": str(self.event.id), "file_format": "pdf"},
+        )
+        self.assertIn(".pdf", head)
+
+    def test_single_event_docx_and_excel_are_header_safe(self):
+        self._safe_download(
+            reverse("reports:report-generate"),
+            {"scope": "single_event", "event_id": str(self.event.id), "file_format": "docx"},
+        )
+        self._safe_download(
+            reverse("reports:report-generate"),
+            {"scope": "single_event", "event_id": str(self.event.id), "file_format": "excel"},
+        )
+
+    def test_event_pdf_button_is_header_safe(self):
+        head = self._safe_download(reverse("reports:event-pdf", args=[self.event.id]))
+        self.assertIn(".pdf", head)
+
+    def test_normal_titles_keep_their_readable_name(self):
+        event = make_past_event(self.staff, title="Vaccine Launch")
+        head = self._safe_download(reverse("reports:event-pdf", args=[event.id]))
+        self.assertIn("Vaccine_Launch.pdf", head)
