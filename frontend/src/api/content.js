@@ -14,8 +14,9 @@ function toRequestBody(data) {
 }
 
 export const contentApi = {
-  // Public Home page's one-call read: { site_settings, featured,
-  // latest_news, event_photos }. No auth required.
+  // Public Home page's one-call read: { site_settings, major_events,
+  // announcements, latest_news, upcoming_events, held_events,
+  // event_photos }. No auth required.
   getHomeFeed: (params) => api.get("/home/feed/", { params }),
 
   // Manage Content (Communications/Admin). GET is open (paginated? no ,

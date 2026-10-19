@@ -4,7 +4,6 @@ import AppLayout from "./components/layout/AppLayout.jsx";
 import Login from "./pages/Login/Login.jsx";
 import Register from "./pages/Login/Register.jsx";
 import ForgotPassword from "./pages/Login/ForgotPassword.jsx";
-import Home from "./pages/Home/Home.jsx";
 import AboutUs from "./pages/About/AboutUs.jsx";
 import Dashboard from "./pages/Dashboard/Dashboard.jsx";
 import UpcomingEventsPage from "./pages/Dashboard/UpcomingEventsPage.jsx";
@@ -190,7 +189,11 @@ export default function App() {
         <Route path="/configuration" element={<Navigate to="/admin/configuration" replace />} />
       </Route>
 
-      <Route path="/" element={<Home />} />
+      {/* Internal tooling: the first page is the login screen. The public
+          marketing Home page (pages/Home/Home.jsx) is intentionally not
+          routed anymore — the file is kept for future use, but nothing
+          links to it. `/about` remains as the one public info page. */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/about" element={<AboutUs />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
