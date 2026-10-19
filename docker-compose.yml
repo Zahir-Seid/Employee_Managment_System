@@ -22,6 +22,11 @@ services:
       DEBUG: "False"
       DB_HOST: db
       DB_PORT: "5432"
+      # One trusted proxy (this stack's nginx) in front of Django; the
+      # 3 gunicorn workers share throttle counters via the file cache.
+      TRUSTED_PROXY_COUNT: "${TRUSTED_PROXY_COUNT:-1}"
+      CACHE_BACKEND: "${CACHE_BACKEND:-filebased}"
+      CACHE_LOCATION: /tmp/ems-cache
     volumes:
       - media:/app/media
       - private_media:/app/private_media

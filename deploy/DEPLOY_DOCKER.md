@@ -332,6 +332,13 @@ docker compose up -d --force-recreate backend
 
 ## 11. Security notes (recommended, not applied)
 
+- **Throttle identity is proxy-aware since the security review's finding #3 fix**:
+  `TRUSTED_PROXY_COUNT` (default 1) makes DRF trust the last `X-Forwarded-For` hop —
+  the address this stack's nginx appends — so rotating spoofed prefixes can't mint
+  fresh rate-limit buckets, and `CACHE_BACKEND=filebased` (compose default) shares
+  counters across gunicorn's 3 workers. If you ever expose the backend directly
+  (no nginx), set `TRUSTED_PROXY_COUNT=0`; if you run several backend replicas,
+  move the cache to Redis instead of the host-local file cache.
 - **API documentation is currently public**: `/api/docs/`, `/api/schema/`, `/api/redoc/`
   return 200 to anonymous visitors (verified). To block, add **before** the existing
   `/api` location in `frontend/nginx.conf` (nginx checks regex locations in order):

@@ -6,7 +6,7 @@
 
 Legend: 🔴 High · 🟠 Medium · 🟡 Low · ⚪ Info/Hardening. Every attack result below was reproduced live unless marked *static*.
 
-**Status 2026-10-19 (updated):** findings **#1, #2, #4, #5, #6, #9 are FIXED** (refresh-token blacklisting; embed gating; anonymous content filter — plus the follow-up fixes: photo magic-byte check `apps/reports/validators.py`, `POST /auth/logout/` in `apps/accounts/views.py` + `ActionType.LOGOUT`, per-mailbox login throttle `apps/accounts/throttling.py`, and export filename sanitation in `apps/reports/views_generation.py`). Regression tests: `test_refresh_token_blacklisting.py`, `test_event_detail_embeds.py`, `test_content.py`, `test_logout.py`, `test_login_throttle.py`, `FilenameSanitationTests` in `test_reports.py`. #3 remains open (deploy-side: trusted real-IP + shared throttle cache); #7 (docs-block nginx snippet pending owner approval), #8, and #10 are documented follow-ups.
+**Status 2026-10-19 (updated):** findings **#1, #2, #3, #4, #5, #6, #9 are FIXED** (refresh-token blacklisting; embed gating; anonymous content filter — plus the follow-up fixes: photo magic-byte check `apps/reports/validators.py`, `POST /auth/logout/` in `apps/accounts/views.py` + `ActionType.LOGOUT`, per-mailbox login throttle `apps/accounts/throttling.py`, and export filename sanitation in `apps/reports/views_generation.py`). Regression tests: `test_refresh_token_blacklisting.py`, `test_event_detail_embeds.py`, `test_content.py`, `test_logout.py`, `test_login_throttle.py`, `FilenameSanitationTests` in `test_reports.py`. #3's fix: `NUM_PROXIES`/`TRUSTED_PROXY_COUNT` (default 1 = the shipped nginx hops, spoofed XFF prefixes ignored — `test_throttle_ident.py`) plus a `CACHE_BACKEND=filebased` option so gunicorn's 3 workers share throttle counters (compose sets it; multi-replica deployments swap in Redis). #7 (docs-block nginx snippet pending owner approval), #8, and #10 are documented follow-ups.
 
 ---
 
@@ -18,7 +18,7 @@ The codebase has an unusually disciplined authorization model — nearly every e
 |---|----------|-------|---------|
 | 1 | 🔴 High **[FIXED]** | A07 | Stolen refresh tokens survive password change/reset (7-day window) |
 | 2 | 🟠 Medium **[FIXED]** | A01 | Event-detail endpoint embeds other users' support requests + reports (bypasses 403/404) |
-| 3 | 🟠 Medium | A04/A05 | Rate-limit buckets collapse to one global ident behind the reverse proxy |
+| 3 | 🟠 Medium **[FIXED]** | A04/A05 | Rate-limit buckets collapse to one global ident behind the reverse proxy |
 | 4 | 🟠 Medium **[FIXED]** | A01 | Anonymous list endpoint leaks unpublished/future-scheduled content |
 | 5 | 🟡 Low **[FIXED]** | A08 | Event-photo validation is extension-only (no magic bytes) |
 | 6 | 🟡 Low **[FIXED]** | A07 | No logout/revoke endpoint; tokens stored in `localStorage` |

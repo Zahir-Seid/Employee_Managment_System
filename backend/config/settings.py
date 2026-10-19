@@ -203,8 +203,41 @@ REST_FRAMEWORK = {
         "otp_request": "5/hour",
         "otp_verify": "20/hour",
     },
+    # Security review finding #3: DRF derives the throttle identity from
+    # X-Forwarded-For only when it knows how many proxies to trust.
+    # TRUSTED_PROXY_COUNT=1 matches both shipped deploy paths (docker
+    # compose's nginx and deploy/nginx-jeems.conf): the LAST XFF hop is
+    # the address that proxy appended, client-supplied prefixes are
+    # ignored — so one client cannot mint unlimited buckets by rotating
+    # spoofed XFF values. Set 0 if Django is reachable DIRECTLY (no
+    # proxy): XFF is then ignored entirely and REMOTE_ADDR is used.
+    "NUM_PROXIES": config("TRUSTED_PROXY_COUNT", default=1, cast=int),
     "EXCEPTION_HANDLER": "apps.core.exceptions.custom_exception_handler",
 }
+
+# Throttle counters live in the default cache. Django's out-of-the-box
+# LocMemCache is per-process: with gunicorn --workers 3 each worker keeps
+# its own counters, so a 10/min limit really allows up to 30/min across
+# the container (finding #3's second half). CACHE_BACKEND=filebased makes
+# the workers share the counters via one directory — sufficient for the
+# single-container compose layout, no extra service. For multiple
+# backend replicas, add django-redis and extend this block with a redis
+# branch (the filebased cache is host-local by design).
+CACHE_BACKEND = config("CACHE_BACKEND", default="locmem")
+if CACHE_BACKEND == "filebased":
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": config("CACHE_LOCATION", default="/tmp/ems-cache"),
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "ems-throttle",
+        }
+    }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=config("JWT_ACCESS_MIN", default=30, cast=int)),
