@@ -43,7 +43,7 @@ def _read_head(f, n=8192):
     return head
 
 
-def _signature_ok(kind, f):
+def signature_ok(kind, f):
     head = _read_head(f)
     if kind == "jpeg":
         return head.startswith(b"\xff\xd8\xff")
@@ -93,7 +93,7 @@ def validate_attachments(files):
         if f.size > MAX_FILE_SIZE:
             raise ValidationError({"attachments": f"'{name}' is larger than the 10 MB limit."})
         content_type, kind = ALLOWED_TYPES[ext]
-        if not _signature_ok(kind, f):
+        if not signature_ok(kind, f):
             raise ValidationError({"attachments": f"'{name}' doesn't look like a valid {ext} file."})
         result.append((f, name, content_type))
     return result

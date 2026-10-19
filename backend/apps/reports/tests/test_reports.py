@@ -181,6 +181,11 @@ class ReportAccessControlTests(APITestCase):
 
 import base64
 
+_MINIMAL_PNG_B64 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
 # A genuine minimal 1x1 pixel JPEG. Bug fix: tests previously used
 # `b"0" * size_bytes` as fake "image" content — Django's ImageField uses
 # Pillow to actually decode uploaded files, so fake bytes are correctly
@@ -221,6 +226,37 @@ class PhotoUploadValidationTests(APITestCase):
     def test_disallowed_file_extension_rejected(self):
         response = self._upload(filename="document.pdf", content_type="application/pdf", content=b"not an image")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fake_png_bytes_rejected_regression(self):
+        """Security review #5: bytes must match the extension. Pillow's
+        decodability check already rejects undecodable junk — but it
+        sniffs BYTES, not extensions, so the interesting mismatch below
+        is a *decodable* image in the wrong extension."""
+        decoy = SimpleUploadedFile("polyglot.png", b"<html><script>alert(1)</script></html>", content_type="image/png")
+        response = self.client.post(
+            reverse("reports:report-photo-upload", args=[self.report_id]), {"image": decoy}, format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_jpeg_bytes_named_png_rejected(self):
+        # Pillow happily decodes a JPEG regardless of its .png name, so
+        # the old extension-only validator (before finding #5's signature
+        # step) ACCEPTED this file and stored/served a JPEG as image/png.
+        response = self._upload(filename="sneaky.png", content=_MINIMAL_JPEG, content_type="image/png")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("doesn't look like", str(response.data))
+
+    def test_png_bytes_named_jpg_rejected(self):
+        response = self._upload(filename="photo.jpg", content=_MINIMAL_PNG_B64, content_type="image/jpeg")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("doesn't look like", str(response.data))
+
+    def test_png_content_named_jpg_accepted_when_bytes_match_jpeg(self):
+        # The real JPEG constant already proves decodability; here we
+        # only assert a *valid* jpeg-in-jpg-name still passes (mirroring
+        # the existing success test with an extension flip).
+        response = self._upload(filename="renamed.jpg", content=_MINIMAL_JPEG, content_type="image/jpeg")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_oversized_file_rejected(self):
         # Size is checked before Pillow ever tries to decode the content,
