@@ -1,5 +1,9 @@
 # Running EMS with Docker
 
+> On a **Linux server**, use `deploy/DEPLOY_DOCKER.md` — the same stack, written for
+> that host and verified end-to-end there. This file keeps the Windows/PowerShell
+> phrasing of the original package.
+
 Three containers, started together by `docker-compose.yml`:
 
 | Service | What it is |

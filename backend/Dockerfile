@@ -10,6 +10,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# The executable bit on docker-entrypoint.sh is lost when the source is
+# checked out or unzipped on Windows, which would make this container fail to
+# start ("permission denied"). Set it explicitly so the image always runs.
+RUN chmod +x docker-entrypoint.sh
+
 RUN useradd --system --no-create-home jeems \
     && mkdir -p /app/media /app/private_media /app/staticfiles \
     && DEBUG=False DJANGO_SECRET_KEY=build-only ALLOWED_HOSTS=localhost DB_PASSWORD=build-only \
