@@ -52,6 +52,9 @@ class HomeContentListCreateView(generics.ListCreateAPIView):
         return [IsCommunicationsOrAdmin()]
 
     def get_queryset(self):
+        authenticated = bool(
+            getattr(self.request, "user", None) and self.request.user.is_authenticated
+        )
         qs = HomeContent.objects.select_related("linked_event", "created_by").all()
         content_type = self.request.query_params.get("content_type")
         if content_type:
@@ -60,7 +63,22 @@ class HomeContentListCreateView(generics.ListCreateAPIView):
         audience = self.request.query_params.get("audience")
         if audience in (HomeContentAudience.HOME, HomeContentAudience.TV):
             qs = qs.filter(audience__in=[audience, HomeContentAudience.BOTH])
-        return qs.order_by("-created_at")
+        if authenticated:
+            # The Manage Content work surface: every row, including drafts,
+            # expired and future-scheduled items.
+            return qs.order_by("-created_at")
+        # Security review #4: this list is reachable unauthenticated
+        # (AllowAny on GET), so an anonymous caller gets exactly what the
+        # public feed would show today — drafts and future-scheduled rows
+        # stay internal until they authenticate. Python-level because
+        # "showable" also depends on a linked Event's own dates (see
+        # HomeContent.is_currently_showable and HomeFeedView).
+        today = timezone.localdate()
+        return [
+            item
+            for item in qs.order_by("-created_at")
+            if item.is_currently_showable(today)
+        ]
 
     def perform_create(self, serializer):
         instance = serializer.save(created_by=self.request.user)

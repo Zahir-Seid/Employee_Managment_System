@@ -60,8 +60,13 @@ class LoginView(TokenObtainPairView):
 
 
 class RefreshView(TokenRefreshView):
-    """Standard JWT refresh endpoint; rotation + blacklisting configured in
-    settings.SIMPLE_JWT keeps stolen refresh tokens from being reused.
+    """JWT refresh endpoint. Refresh tokens are NOT rotated (see
+    settings.SIMPLE_JWT ROTATE_REFRESH_TOKENS=False); theft containment
+    relies on every password-mutating flow tapping
+    apps.accounts.tokens.blacklist_outstanding_refresh_tokens, which
+    revokes all of a user's outstanding refresh tokens the moment their
+    credential changes — the token_blacklist app then rejects them on the
+    next refresh attempt.
 
     Same "auth" throttle scope as LoginView, and for the same reason — an
     always-on TV Display screen refreshes its token unattended every

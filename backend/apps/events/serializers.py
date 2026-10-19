@@ -97,15 +97,53 @@ class EventDetailSerializer(serializers.ModelSerializer):
         user = obj.operational_request_to
         return (user.get_full_name() or user.email) if user else ""
 
+    def _request_user(self):
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request is not None else None
+        if user is None or not user.is_authenticated:
+            return None
+        return user
+
     def get_support_request(self, obj):
+        """Security review #2: only embed the support request for viewers
+        who could also open it at /api/support-requests/{id}/ — reuse the
+        exact same `_visible_requests` predicate as that endpoint (owner
+        staff, assigned comms, Lead, Leadership, Admin), rather than a
+        second hand-rolled copy that will drift. Everyone else (incl. a
+        plain Staff who does not own the event, or Communications who is
+        not assigned) gets `null`, so the embed can't be used to bypass
+        the dedicated endpoint's 403/404.
+        """
         if not obj.has_support_request:
+            return None
+        user = self._request_user()
+        if user is None:
+            return None
+        from apps.communications.models import SupportRequest
+        from apps.communications.views import _visible_requests
+
+        scoped = _visible_requests(SupportRequest.objects.filter(pk=obj.support_request.pk), user)
+        if not scoped.exists():
             return None
         from apps.communications.serializers import SupportRequestSerializer
 
-        return SupportRequestSerializer(obj.support_request).data
+        return SupportRequestSerializer(obj.support_request, context=self.context).data
 
     def get_post_event_report(self, obj):
+        """Security review #2: only embed the Event Status Report for
+        viewers who could also open it at the dedicated
+        /api/events/{id}/post-event-report/ GET. That refuses exactly
+        staff members who aren't the event's owner (`_may_view_report` —
+        the embed imports the same predicate so the two can't drift).
+        """
         if not obj.has_post_event_report:
+            return None
+        user = self._request_user()
+        if user is None:
+            return None
+        from apps.reports.views import _may_view_report
+
+        if not _may_view_report(user, obj):
             return None
         from apps.reports.serializers import PostEventReportSerializer
 

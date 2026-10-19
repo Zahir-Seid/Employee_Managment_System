@@ -51,6 +51,9 @@ look-alike paths (`/tmp/FAKE_REAL_PRIVATE`, `/tmp`, `…/private_media`, `…/me
 (`Ran 362 tests`, `FAILED (failures=4)`). The after-state is identical on Django 5.2.18 + DRF 3.17.2 +
 simplejwt 5.5.1, and also with Pillow 12.3.0 in a scratch environment.
 
+*Update 2026-10-19:* the security-review fixes (`SECURITY_REVIEW.md` findings #1/#2/#4) added 10
+regression tests — the suite is now **372 tests, the same 4 documented-decision failures, 0 errors**.
+
 3.3 **Root cause per test.**
 
 | # | Test | Root cause | Result |

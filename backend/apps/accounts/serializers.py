@@ -4,6 +4,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from . import registration
 from .models import Role, RegistrationOTP, User, primary_role
+from .tokens import blacklist_outstanding_refresh_tokens
 
 
 class EMSTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -76,6 +77,11 @@ class ChangePasswordSerializer(serializers.Serializer):
         user = self.context["request"].user
         user.set_password(self.validated_data["new_password"])
         user.save(update_fields=["password"])
+        # Security review #1: the credential just changed, so every
+        # outstanding refresh token (all devices, incl. a stolen one) stops
+        # working. The current device re-logs in when its access token
+        # expires.
+        blacklist_outstanding_refresh_tokens(user)
         return user
 
 
@@ -164,6 +170,11 @@ class SetPasswordSerializer(serializers.Serializer):
         user = self.context["target_user"]
         user.set_password(self.validated_data["new_password"])
         user.save(update_fields=["password"])
+        # Security review #1: an admin-initiated reset is containment —
+        # it happens BECAUSE the current credential is compromised or
+        # forgotten-and-shared; immediately revoke the target's outstanding
+        # refresh tokens so old sessions can't ride them out.
+        blacklist_outstanding_refresh_tokens(user)
         return user
 
 
@@ -304,6 +315,11 @@ class PasswordResetCompleteSerializer(serializers.Serializer):
         user = self.validated_data["user"]
         user.set_password(self.validated_data["password"])
         user.save(update_fields=["password"])
+        # Security review #1: a password reset means the old credential is
+        # (or is assumed to be) compromised — revoke the user's outstanding
+        # refresh tokens so any stolen one dies here instead of riding out
+        # its remaining lifetime.
+        blacklist_outstanding_refresh_tokens(user)
         # Remove the code so it can't be reused.
         RegistrationOTP.objects.filter(email=self.validated_data["email"]).delete()
         return user

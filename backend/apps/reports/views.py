@@ -24,6 +24,25 @@ def _get_owned_event(request, event_id):
     return event
 
 
+def _may_view_report(user, event):
+    """The single visibility rule for reading an Event Status Report,
+    used BOTH by the dedicated GET endpoint below and by the equivalent
+    `post_event_report` embed on Event Details (security review finding
+    #2 — one rule, not two drifting copies).
+
+    Everyone except a Staff member who isn't the event's owner may read
+    it: Communications/Lead, Leadership and Admin need the reports for
+    their reporting and admin roles (this endpoint used `is_staff_role`,
+    which is also True for Admin, and as a side effect refused an Admin
+    viewing someone else's report — the tests for comms/leadership
+    already said "any report", so Admin joins them, matching
+    AdminEventDetailView's "edit any event" precedent).
+    """
+    if user.is_admin_role or user.is_superuser:
+        return True
+    return not (user.is_staff_role and event.owner_id != user.id)
+
+
 class PostEventReportCreateView(generics.GenericAPIView):
     """FR29-FR31: create (Save, as a draft) or retrieve the Post-Event
     Report for a specific event. FR29 requires the event date to have
@@ -35,7 +54,7 @@ class PostEventReportCreateView(generics.GenericAPIView):
 
     def get(self, request, event_id):
         event = get_object_or_404(Event, pk=event_id)
-        if request.user.is_staff_role and event.owner_id != request.user.id:
+        if not _may_view_report(request.user, event):
             raise PermissionDenied("You may only view Event Status Reports for events you own.")
         if not event.has_post_event_report:
             return Response({"detail": "No Event Status Report exists for this event."}, status=status.HTTP_404_NOT_FOUND)

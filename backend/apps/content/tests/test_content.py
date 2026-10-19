@@ -38,6 +38,35 @@ class HomeFeedTests(APITestCase):
         titles = [i["title"] for i in (resp.data if isinstance(resp.data, list) else resp.data["results"])]
         self.assertEqual(titles, ["T"])
 
+    def test_anonymous_manage_list_only_returns_currently_showable_items(self):
+        """Security review #4: GET /api/home/content/ is AllowAny, so an
+        anonymous caller must get exactly what the public feed would show
+        today — unpublished drafts and future-scheduled rows stay internal
+        until they authenticate. The Manage Content page itself (the only
+        consumer that needs the full list) is always authenticated.
+        """
+        HomeContent.objects.create(content_type=HomeContentType.NEWS, title="Published", audience="home", publish_date=date.today())
+        HomeContent.objects.create(
+            content_type=HomeContentType.NEWS, title="Unpublished Draft", audience="home", publish_date=date.today(),
+            is_published=False,
+        )
+        HomeContent.objects.create(
+            content_type=HomeContentType.ANNOUNCEMENT, title="Deactivated", audience="home", publish_date=date.today(),
+            is_active=False,
+        )
+        list_resp = self.client.get("/api/home/content/")
+        list_items = list_resp.data if isinstance(list_resp.data, list) else list_resp.data["results"]
+        anon_titles = [i["title"] for i in list_items]
+        self.assertIn("Published", anon_titles)
+        self.assertNotIn("Unpublished Draft", anon_titles)
+        self.assertNotIn("Deactivated", anon_titles)
+        self.client.force_authenticate(user=self.admin)
+        authed_resp = self.client.get("/api/home/content/")
+        authed_items = authed_resp.data if isinstance(authed_resp.data, list) else authed_resp.data["results"]
+        authed_titles = [i["title"] for i in authed_items]
+        self.assertIn("Unpublished Draft", authed_titles)
+        self.assertIn("Deactivated", authed_titles)
+
     def test_tv_feed_all_param_skips_home_page_cap(self):
         # The Home page caps each section at 6; the TV Display asks for
         # ?all=1 so every showable item (e.g. a 7th Major Event) reaches it.
