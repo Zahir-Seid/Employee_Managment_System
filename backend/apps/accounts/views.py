@@ -5,6 +5,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.audit.models import ActionType, ObjectType
@@ -45,8 +47,8 @@ class LoginView(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         # Reimplements TokenObtainPairView.post() instead of wrapping it so the
-        # authenticated user is available for the LOGIN audit entry. There is no
-        # logout entry: JWT logout is just the client discarding its token.
+        # authenticated user is available for the LOGIN audit entry. Logouts
+        # are audited at LogoutView (the refresh token gets blacklisted there)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.user
@@ -75,6 +77,47 @@ class RefreshView(TokenRefreshView):
     """
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "auth"
+
+
+class LogoutView(APIView):
+    """POST /auth/logout/ {"refresh": <token>} — blacklists this session's
+    refresh token so it can never be refreshed again.
+
+    Security review finding #6: until now "logout" just meant the client
+    discarding its token, so a stolen or saved refresh token kept working
+    for its full lifetime. The token_blacklist app already re-checks
+    every refresh against the blacklist (finding #1's fix relies on the
+    same mechanism); this endpoint is how an end user — not only a
+    password change — writes a revocation.
+
+    AllowAny on purpose: the access token may have expired by the time
+    the user signs out; possession of the refresh token is the proof.
+    "auth" throttle scope, same as login/refresh. Anything wrong with
+    the presented token (expired, already blacklisted, malformed,
+    missing) still returns a calm 200 — logging out must not fail
+    loudly on the way out.
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def post(self, request):
+        raw = request.data.get("refresh")
+        if raw:
+            try:
+                token = RefreshToken(raw)
+                token.blacklist()
+                user = User.objects.filter(pk=token.get("user_id", "")).first()
+                if user:
+                    log_action(
+                        ActionType.LOGOUT,
+                        user,
+                        user=user,
+                        description=f"{user.get_full_name() or user.email} logged out.",
+                    )
+            except TokenError:
+                pass
+        return Response({"detail": "Logged out."}, status=status.HTTP_200_OK)
 
 
 class MeView(generics.RetrieveAPIView):

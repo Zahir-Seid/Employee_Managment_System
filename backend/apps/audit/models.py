@@ -11,6 +11,7 @@ class ActionType(models.TextChoices):
     SUBMITTED = "submitted", "Submitted"
     DELETED = "deleted", "Deleted"
     LOGIN = "login", "Login"
+    LOGOUT = "logout", "Logout"
     TODO_COMPLETED = "todo_completed", "To-Do Item Completed"
     REPORT_GENERATED = "report_generated", "Report Generated"
 
