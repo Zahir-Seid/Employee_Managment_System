@@ -6,7 +6,7 @@
 
 Legend: 🔴 High · 🟠 Medium · 🟡 Low · ⚪ Info/Hardening. Every attack result below was reproduced live unless marked *static*.
 
-**Status 2026-10-19:** findings **#1, #2, #4 are FIXED** (`backend/apps/accounts/tokens.py`, shared `_may_view_report` + `_visible_requests`-based embed gating in `apps/events/serializers.py` + `apps/reports/views.py`, and the anonymous `home/content` showable filter) with regression tests (`test_refresh_token_blacklisting.py`, `test_event_detail_embeds.py`, `test_content.py`) and a 16/16 live re-verification pass on the rebuilt Docker stack (`/tmp/opencode/sec_verify.py`). #3 remains open (deploy-side: trusted real-IP + shared throttle cache); #5–#10 are documented follow-ups.
+**Status 2026-10-19 (updated):** findings **#1, #2, #4, #5, #6, #9 are FIXED** (refresh-token blacklisting; embed gating; anonymous content filter — plus the follow-up fixes: photo magic-byte check `apps/reports/validators.py`, `POST /auth/logout/` in `apps/accounts/views.py` + `ActionType.LOGOUT`, per-mailbox login throttle `apps/accounts/throttling.py`, and export filename sanitation in `apps/reports/views_generation.py`). Regression tests: `test_refresh_token_blacklisting.py`, `test_event_detail_embeds.py`, `test_content.py`, `test_logout.py`, `test_login_throttle.py`, `FilenameSanitationTests` in `test_reports.py`. #3 remains open (deploy-side: trusted real-IP + shared throttle cache); #7 (docs-block nginx snippet pending owner approval), #8, and #10 are documented follow-ups.
 
 ---
 
@@ -20,11 +20,11 @@ The codebase has an unusually disciplined authorization model — nearly every e
 | 2 | 🟠 Medium **[FIXED]** | A01 | Event-detail endpoint embeds other users' support requests + reports (bypasses 403/404) |
 | 3 | 🟠 Medium | A04/A05 | Rate-limit buckets collapse to one global ident behind the reverse proxy |
 | 4 | 🟠 Medium **[FIXED]** | A01 | Anonymous list endpoint leaks unpublished/future-scheduled content |
-| 5 | 🟡 Low | A08 | Event-photo validation is extension-only (no magic bytes) |
-| 6 | 🟡 Low | A07 | No logout/revoke endpoint; tokens stored in `localStorage` |
+| 5 | 🟡 Low **[FIXED]** | A08 | Event-photo validation is extension-only (no magic bytes) |
+| 6 | 🟡 Low **[FIXED]** | A07 | No logout/revoke endpoint; tokens stored in `localStorage` |
 | 7 | 🟡 Low | A05 | API docs (`/api/docs/`, `/api/schema/`, `/api/redoc/`) publicly reachable |
 | 8 | 🟡 Low | A05 | `DEBUG` defaults to `True` when unset |
-| 9 | 🟡 Low | A07 | No per-user lockout on repeated failed logins; min password length 8 |
+| 9 | 🟡 Low **[PARTIALLY FIXED]** | A07 | No per-user lockout on repeated failed logins; min password length 8 |
 | 10 | ⚪ Info | A01 | Design-consistency notes (event history read-all, staff directory, docs of matrix) |
 
 ---
@@ -168,7 +168,7 @@ Verified earlier and again now: `GET /api/docs/`, `/api/schema/`, `/api/redoc/` 
 
 - **✅ What's done right (verified):** registration OTP — 6-digit `secrets.randbelow`, SHA-256 hash stored, 5-attempt cap, 10-min expiry, 60-s resend cooldown, per-email binding, generic anti-enumeration responses on reset; attachment upload pipeline (see #5 — model to copy); `SetPassword`/staff management Admin-only (staff `POST /auth/staff/` → 403 live-verified); audit logs Comms/Leadership (staff 403 live-verified); system settings PATCH Admin-only (403 live-verified; anon 401); notifications fully recipient-scoped; saved reports private to creator with re-check at report endpoints; configuration writes admin-gated; TV/content writes Comms/Admin; event `owner` is server-assigned (payload `owner` ignored, live-verified); profile role/`is_superuser` write attempts ignored (403-no-op live-verified); private media served through authorized view only (public `/private_media/...` 404 live-verified); event-message attachments downloaded only by conversation participants (404-style scoping); `_assert_not_last_admin` prevents self-locked-out orgs.
 - **Pattern drift:** `IsAdminOrLeadership` name promises leadership inclusion; the method only allows admin/superuser. Harmless today but the name will lie to the next contributor — rename (`IsAdminRole`) to match reality.
-- **Filename from user input:** event titles flow into exported report filenames; Django's `BadHeaderError` blocks header injection (fail-stop 500, not injection), but a title with quotes/CR-LF makes exports fail — worth sanitizing at the generator boundary.
+- **Filename from user input:** ✅ **Resolved 2026-10-19** — event-title-derived download names are now routed through the attachment pipeline's `clean_filename` at the generator boundary (`apps/reports/views_generation.py`, `_safe_report_filename`), with regression tests covering poisoned and normal titles (`FilenameSanitationTests`). Tokens still live in `localStorage` (accepted design: no HttpOnly-cookie migration planned while the SPA and API share no cookie domain).
 - **Registration email enumeration:** `POST /auth/register/request-otp/` reveals "account already exists" for existing emails (a (minor) oracle distinct from the reset flow's generics). Low value given the closed user base; consider generic response.
 - **Staff directory** (`/auth/staff-directory/`) exposes all active staff emails to every authenticated user — fine for internal org tooling; revisit if roles ever expand.
 - **JWT signing = `SECRET_KEY`**: keeping `DJANGO_SECRET_KEY` rotation-safe in `.env` management matters, since it signs both sessions and tokens (no separate JWT key). Document in the guide when rotating.
