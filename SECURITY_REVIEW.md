@@ -53,7 +53,7 @@ The codebase has an unusually disciplined authorization model — nearly every e
 3. Fix the `RefreshView` docstring to describe reality.
 - Bonus: this makes a `POST /auth/logout/` (blacklist presented refresh) trivial to add — currently users have no way to sign out a session at all.
 
-**Points scored:** high severity because credential rotation is the standard containment response to a leaked token (and the deployment guide's incident advice), yet it does nothing today.
+**Priority rationale:** high severity because credential rotation is the standard containment response to a leaked token — the advice any operator would follow after a suspected compromise — yet it does nothing today.
 
 **Resolved (2026-10-19):** option 1 implemented — `apps/accounts/tokens.py` (`blacklist_outstanding_refresh_tokens`, all outstanding tokens, transaction-wrapped) is called after `set_password` in all three serializers; `RefreshView`'s docstring now states the real mechanism. Regression tests: `test_refresh_token_blacklisting.py` (change-password / admin set-password / OTP reset each replay the pre-change refresh and expect rejection, plus fresh-login positive checks). Live: old refresh → **401**.
 
@@ -110,6 +110,8 @@ def get_support_request(self, obj):
 2. Move throttle counters to a shared cache (`CACHES["default"] = locmem... → Redis` or a dedicated `CACHES["throttling"]` backend; DRF has no built-in Redis throttle but `django-redis` + `DRF-track/redis-throttle` style classes work) and set the same value for the rate-limit cache in Docker Compose (e.g., add a `redis` service or mount a `memcached`; simplest first step: keep LocMem but document that limits are per-worker and raise/lower accordingly).
 3. Optional: `django-axes`-style per-user+IP lockout for `/auth/login/` (see finding 9).
 
+**Resolved (2026-10-19):** DRF's built-in proxy support does the job — `NUM_PROXIES` is now set from `TRUSTED_PROXY_COUNT` (default 1, matching both shipped nginx configs), so the identity is the **last** `X-Forwarded-For` hop: the address our proxy appended. Client-supplied prefixes are ignored, closing the spoofing angle, and requests key on the real client address instead of collapsing onto the nginx container. For the per-worker half, a `CACHE_BACKEND=filebased` option (compose default, shared directory in the container) gives gunicorn's 3 workers one set of counters without adding a service; multi-replica deployments extend the settings block with Redis. Compose, both env templates, and the deployment guide document the two knobs. Regression tests: `test_throttle_ident.py` (last-hop wins over spoofed prefixes; 3 forged prefixes share one spent bucket → 429; `REMOTE_ADDR` fallback).
+
 ---
 
 ### 4. 🟠 Anonymous endpoint lists unpublished/future-scheduled content (A01)
@@ -134,25 +136,29 @@ Risk is contained (photos served as `image/jpeg`/`image/png` with `X-Content-Typ
 
 **Remediation:** reuse the signature logic from `attachments.py` (or a tiny `imghdr`-era check) inside `validate_photo_file`; the shared code already exists — this is a 10-line change plus tests.
 
+**Resolved (2026-10-19):** `validate_photo_file` now also checks the leading bytes, sharing the attachment pipeline's signature logic (made public as `attachments.signature_ok`). One nuance worth recording: Pillow's own decode check in `ImageField` rejects undecodable junk anyway, but it sniffs bytes regardless of extension — so a *genuine* JPEG named `.png` used to pass both checks and be stored/served as `image/png`. The signature step is what closes that extension/bytes mismatch. Regression tests in `test_reports.py`: JPEG-bytes-named-PNG and PNG-bytes-named-JPG rejected with a clear message; matched pairs still accepted.
+
 ---
 
 ### 6. 🟡 No logout / no revocable sessions; tokens in `localStorage` (A07)
 
 Logging out on the frontend only drops the token client-side; a stolen refresh/access remains server-valid (see #1). Both tokens live in `localStorage` (XSS-exfiltratable; React escapes by default which mitigates, but any injected dependency is a one-line token thief).
 
-**Remediation:** Party with #1 — add `POST /auth/logout/` (blacklist presented refresh; clients also clear storage), enable rotation+blacklist, and consider shortening refresh lifetime (7 days is long for an internal tool; 24h–72h with rotation is typical). For defense-in-depth, moving refresh into an HttpOnly, SameSite=Lax cookie is the stronger pattern; if done, pair with explicit CORS exact-origin config.
+**Remediation:** Pairs with #1 — add `POST /auth/logout/` (blacklist presented refresh; clients also clear storage), enable rotation+blacklist, and consider shortening refresh lifetime (7 days is long for an internal tool; 24h–72h with rotation is typical). For defense-in-depth, moving refresh into an HttpOnly, SameSite=Lax cookie is the stronger pattern; if done, pair with explicit CORS exact-origin config.
+
+**Resolved (2026-10-19):** `POST /auth/logout/` now blacklists the presented refresh token — no access token required (possession of the refresh is the proof, and the access token may already have expired), malformed/missing tokens still return a calm 200, and the sign-out is audited (`ActionType.LOGOUT`, added for this). Rotation+blacklist remains off by product choice; password changes (#1) and explicit sign-out both revoke server-side now. Regression tests: `test_logout.py`. Keeping both tokens in `localStorage` is an accepted design trade-off for this internal tool.
 
 ---
 
 ### 7. 🟡 API docs/schema/redoc publicly reachable (A05)
 
-Verified earlier and again now: `GET /api/docs/`, `/api/schema/`, `/api/redoc/` → 200 anonymous. The schema enumerates every endpoint — an attacker's map. Defer decision: `deploy/DEPLOY_DOCKER.md` already documents the optional nginx block `location ~ ^/api/(docs|schema|redoc) { return 404; }` (place **before** the `/api` location, then `docker compose up -d --build frontend`). Recommend applying it in production.
+Verified earlier and again now: `GET /api/docs/`, `/api/schema/`, `/api/redoc/` → 200 anonymous. The schema enumerates every endpoint — an attacker's map. Recommended fix: the optional nginx block `location ~ ^/api/(docs|schema|redoc) { return 404; }` placed **before** the `/api` location, followed by a frontend image rebuild. Recommend applying it in production.
 
 ---
 
 ### 8. 🟡 `DEBUG` defaults to `True` (A05)
 
-`config/settings.py:14` — debug-on by default when the env var is absent. The Docker deployment fails fast on missing production values (`DEBUG=False` required), and `deploy/DEPLOY_DOCKER.md` mandates it, but a bare-metal `manage.py runserver` deployment that forgets `DEBUG` gets verbose error pages (stack traces, settings leak) and the dev `SECRET_KEY` default. Suggest inverting the default (`DEBUG=False`) with a documented `.env.development` for local dev — fail-secure defaults.
+`config/settings.py:14` — debug-on by default when the env var is absent. The Docker deployment fails fast on missing production values (`DEBUG=False` required), but a bare-metal `manage.py runserver` deployment that forgets `DEBUG` gets verbose error pages (stack traces, settings leak) and the dev `SECRET_KEY` default. Suggest inverting the default (`DEBUG=False`) with a documented `.env.development` for local dev — fail-secure defaults.
 
 ---
 
@@ -161,6 +167,8 @@ Verified earlier and again now: `GET /api/docs/`, `/api/schema/`, `/api/redoc/` 
 `auth` scoped throttle: 60/min shared ident (making it effectively *global* behind the proxy — see #3). There is no account-level lockout/notification on consecutive failures. Password policy: min length 8 + common/numeric/similarity validators — acceptable for internal use but weak for an org-wide identity store.
 
 **Remediation:** `django-axes` (4-5 failed attempts → lockout or exponential backoff, per user+IP, DB-backed so it survives restarts); raise `PASSWORD_MIN_LENGTH` to 12 for new accounts. The OTP machinery already shows this pattern (5 attempts/10-min/60-s cooldown) — good mirror to copy the UX from.
+
+**Partially resolved (2026-10-19):** the brute-force half is addressed — `LoginView` now also applies `AttemptedUsernameThrottle` (`apps/accounts/throttling.py`), a second bucket keyed on the **attempted email** (10/min) on top of the per-IP `auth` scope, so guessing passwords for one mailbox exhausts one shared limit no matter how many IPs the guesses come from (`test_login_throttle.py`). Still open as hardening: the `django-axes`-style lockout/notification with escalating backoff, and the 12-character minimum policy.
 
 ---
 
@@ -171,7 +179,7 @@ Verified earlier and again now: `GET /api/docs/`, `/api/schema/`, `/api/redoc/` 
 - **Filename from user input:** ✅ **Resolved 2026-10-19** — event-title-derived download names are now routed through the attachment pipeline's `clean_filename` at the generator boundary (`apps/reports/views_generation.py`, `_safe_report_filename`), with regression tests covering poisoned and normal titles (`FilenameSanitationTests`). Tokens still live in `localStorage` (accepted design: no HttpOnly-cookie migration planned while the SPA and API share no cookie domain).
 - **Registration email enumeration:** `POST /auth/register/request-otp/` reveals "account already exists" for existing emails (a (minor) oracle distinct from the reset flow's generics). Low value given the closed user base; consider generic response.
 - **Staff directory** (`/auth/staff-directory/`) exposes all active staff emails to every authenticated user — fine for internal org tooling; revisit if roles ever expand.
-- **JWT signing = `SECRET_KEY`**: keeping `DJANGO_SECRET_KEY` rotation-safe in `.env` management matters, since it signs both sessions and tokens (no separate JWT key). Document in the guide when rotating.
+- **JWT signing = `SECRET_KEY`**: keeping `DJANGO_SECRET_KEY` rotation-safe in `.env` management matters, since it signs both sessions and tokens (no separate JWT key). Worth documenting for whoever rotates it.
 - **Leftover `host.docker.internal`** in `docker-compose.yml` — cosmetic.
 
 ---
@@ -180,21 +188,23 @@ Verified earlier and again now: `GET /api/docs/`, `/api/schema/`, `/api/redoc/` 
 
 | Category | Assessment |
 |---|---|
-| A01 Broken Access Control | **Good overall; 2 gaps** (finding 2 embed bypass; finding 4 draft leak). Object-level checks consistently implemented elsewhere. |
+| A01 Broken Access Control | **Good overall**; the 2 gaps found (finding 2 embed bypass; finding 4 draft leak) are both fixed. Object-level checks consistently implemented elsewhere. |
 | A02 Cryptographic Failures | Passwords: Argon2/PBKDF2 via Django defaults; OTP hashed at rest; HTTPS mandatory in prod settings (`SESSION_COOKIE_SECURE`, HSTS ready). `SECRET_KEY` doubles as JWT key — rotation discipline needed. |
 | A03 Injection | ORM-only queries; `django-filter`/DRF serializers; no raw SQL/`extra()`/`eval`/`exec`/shell. SQL injection: none found. Template/HTML: DRF JSON responses. |
-| A04 Insecure Design | Role/permission model is explicit and documented; finding 3 (throttle collapse) and IDOR-by-embed are design-level gaps, now known and fixable. |
-| A05 Security Misconfiguration | DEBUG default-on (8), docs exposure (7), throttle cache (3), `CORS_ALLOW_CREDENTIALS` with explicit allowlist (fine — keep exact-match origins), prod fail-fast on missing secrets (good). |
+| A04 Insecure Design | Role/permission model is explicit and documented; the IDOR-by-embed and throttle-collapse gaps (findings 2/3) were design-level but are fixed. |
+| A05 Security Misconfiguration | DEBUG default-on (8), docs exposure (7), throttle cache (3, fixed 2026-10-19), `CORS_ALLOW_CREDENTIALS` with explicit allowlist (fine — keep exact-match origins), prod fail-fast on missing secrets (good). |
 | A06 Vulnerable Components | Not audited here (pip package versions) — recommend `pip-audit` in CI; the 89-migration codebase is current otherwise. |
-| A07 Identification & Authentication Failures | **1 real finding** (refresh survival, #1) + lockout gap (9). Login/OTP anti-enumeration, hashed OTP, throttled OTP — well done. |
-| A08 Software & Data Integrity Failures | Uploads allow-listed with magic bytes for attachments; report photos extension-only (5). No deserialization, no object storage trust issues. |
-| A09 Logging & Monitoring Failures | Pervasive `log_action` audit trail incl. logins/changes/deletes; audit view role-gated. Suggest: log failed-login streaks (feeds #9). |
+| A07 Identification & Authentication Failures | The 1 real finding (refresh survival, #1) is fixed; lockout gap (9) partially addressed via the per-mailbox throttle. Login/OTP anti-enumeration, hashed OTP, throttled OTP — well done. |
+| A08 Software & Data Integrity Failures | Uploads allow-listed with magic bytes for attachments and — since 2026-10-19 — for report photos (5). No deserialization, no object storage trust issues. |
+| A09 Logging & Monitoring Failures | Pervasive `log_action` audit trail incl. logins/logouts/changes/deletes; audit view role-gated. Suggest: log failed-login streaks (feeds #9). |
 | A10 SSRF | No server-side URL fetches. Not applicable. |
 
 ---
 
-## PoC artifacts
+## Testing notes (live verification)
 
-Scripts: `/tmp/opencode/sec_poc.py` (original findings — creates `sec_a`/`sec_b`/`sec_c` throwaway users, one event, one support request, one draft report, one draft content item in the **Docker test DB**) and `/tmp/opencode/sec_verify.py` (post-fix re-verification — fresh `vd_*` users; **16/16 checks passed** on the rebuilt stack). Wipe the disposable test DB with `docker compose down -v` when done; throttle probes self-heal within their windows.
+Live verification ran against the Docker test stack (frontend on `:8090`) with three throwaway accounts — `sec_a` (Staff, event owner), `sec_b` (Staff), `sec_c` (Communications) — created through the staff admin API, plus one draft event, one support request, one draft post-event report and one draft content item. Every attack in the findings above was executed against the running API, and then re-run after the fixes landed (with a fresh set of test accounts) to confirm the new behavior end to end: old refresh token → 401, embeds hidden for other-staff/unassigned comms while owner/leadership/admin keep them, drafts invisible to anonymous readers, spoofed `X-Forwarded-For` prefixes sharing one throttle bucket.
+
+These accounts and rows exist only in the disposable Docker test database — remove them when convenient, or wipe that stack with `docker compose down -v`. Throttle-probe counters roll over with their windows.
 
 One nuance surfaced during live re-verification, worth recording: the Docker bootstrap superuser (`admin@example.com`) carries `roles=["staff"]` + `is_superuser=True`. Support-request visibility is strictly role-driven (`_visible_requests` gives Staff scope-only-own-events), so that account sees support requests like its *roles* say — while permission classes like `IsAdminOrLeadership` and the new `_may_view_report` honor `is_superuser` unconditionally. Two pass keys in one app: not currently exploitable (it grants *more* to superuser, never *less*), but unify if a superuser account with narrow roles is ever a real operator.
